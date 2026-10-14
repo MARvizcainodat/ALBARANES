@@ -1,0 +1,455 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Confirmar entrega · Hermanos Vizcaíno, S.C.A.</title>
+<style>
+:root {
+  --azul: #1a365d; --azul-m: #2c5282; --borde: #cbd5e0; --fondo: #f0f4f8;
+  --ok: #276749; --warn: #c05621; --crit: #c53030;
+  --safe: env(safe-area-inset-bottom, 0px);
+}
+* { box-sizing: border-box; margin: 0; padding: 0; -webkit-tap-highlight-color: transparent; }
+body { font-family: system-ui, -apple-system, sans-serif; background: var(--fondo); color: #1a202c; font-size: 16px; padding-bottom: var(--safe); }
+.top { background: var(--azul); color: #fff; padding: 14px 16px; }
+.top h1 { font-size: 1.15rem; font-weight: 700; }
+.top .sub { font-size: .78rem; opacity: .88; margin-top: 2px; }
+.wrap { max-width: 480px; margin: 0 auto; padding: 14px 12px 30px; }
+.card { background: #fff; border: 1px solid var(--borde); border-radius: 14px; padding: 16px; margin-bottom: 12px; }
+.card h2 { font-size: .72rem; text-transform: uppercase; letter-spacing: .4px; color: #718096; margin-bottom: 8px; font-weight: 700; }
+.ref { font-size: 1.2rem; font-weight: 700; color: var(--azul); }
+.meta { font-size: .9rem; color: #4a5568; line-height: 1.45; }
+.lineas { width: 100%; border-collapse: collapse; font-size: .88rem; margin-top: 6px; }
+.lineas th { text-align: left; font-size: .7rem; color: #718096; padding: 4px 0; border-bottom: 1px solid var(--borde); }
+.lineas td { padding: 8px 0; border-bottom: 1px solid #edf2f7; vertical-align: top; }
+.lineas td.num { text-align: right; white-space: nowrap; font-weight: 600; }
+.ops { display: flex; flex-direction: column; gap: 10px; }
+.ops button {
+  width: 100%; padding: 16px 14px; border: 2px solid var(--borde); border-radius: 12px;
+  background: #fff; font-size: 1rem; font-weight: 600; text-align: left; min-height: 56px;
+  display: flex; align-items: center; gap: 10px;
+}
+.ops button.sel { border-color: var(--azul); background: #ebf8ff; color: var(--azul); }
+.ops button .ico { font-size: 1.3rem; width: 28px; text-align: center; }
+label { display: block; font-size: .75rem; font-weight: 600; color: #718096; margin: 12px 0 4px; }
+input, textarea, select {
+  width: 100%; padding: 14px; border: 2px solid var(--borde); border-radius: 10px;
+  font-size: 1rem; min-height: 50px; background: #fff;
+}
+textarea { min-height: 90px; resize: vertical; }
+.btn-main {
+  width: 100%; padding: 16px; border: none; border-radius: 12px;
+  background: var(--azul); color: #fff; font-weight: 700; font-size: 1.05rem; min-height: 56px; margin-top: 12px;
+}
+.btn-main:disabled { opacity: .5; }
+.btn-ghost { width: 100%; padding: 14px; border: none; border-radius: 12px; background: #e2e8f0; color: #2d3748; font-weight: 600; margin-top: 8px; }
+.notice { font-size: .8rem; color: #718096; margin-top: 14px; line-height: 1.4; }
+.error { background: #fed7d7; color: #9b2c2c; padding: 14px; border-radius: 12px; margin: 14px 12px; }
+.ok { background: #c6f6d5; color: #22543d; padding: 18px; border-radius: 12px; text-align: center; }
+.ok h2 { font-size: 1.2rem; margin-bottom: 6px; }
+.hidden { display: none !important; }
+.step { display: none; }
+.step.active { display: block; }
+.resumen { background: #edf2f7; border-radius: 10px; padding: 12px; font-size: .9rem; margin: 10px 0; }
+.copia { text-align: left; background: #fff; color: #1a202c; border: 1px solid var(--borde); border-radius: 12px; padding: 14px; margin-top: 14px; font-size: .92rem; line-height: 1.5; }
+.copia b { color: var(--azul); }
+.btn-pdf { display: block; width: 100%; margin-top: 12px; padding: 16px; border: none; border-radius: 12px; background: var(--ok); color: #fff; font-weight: 700; font-size: 1.05rem; min-height: 56px; }
+#vista-previa{display:none}
+@page{size:A4 portrait;margin:9mm}
+@media print{
+  html,body{width:100%;margin:0!important;padding:0!important;background:#fff!important}
+  body *{visibility:hidden}
+  .top,#err,#done,#app,.notice{display:none!important}
+  #vista-previa,#vista-previa *{visibility:visible}
+  #vista-previa{display:block!important;position:absolute;left:0;top:0;width:100%}
+  .no-print{display:none!important}
+}
+.albaran-print{font-family:Arial,sans-serif;font-size:9px;width:100%;margin:0 auto;color:#111;line-height:1.25}
+.mg-page{font-family:Calibri,Carlito,'Segoe UI',Arial,sans-serif;color:#000;font-size:8.5pt;width:192mm;height:277mm;display:flex;flex-direction:column;page-break-after:always;break-after:page;box-sizing:border-box}
+.mg-page:last-child{page-break-after:auto;break-after:auto}
+.mg-top{display:grid;grid-template-columns:1fr 1fr;column-gap:6mm}
+.mg-emp h1{font-size:13pt;font-weight:400;margin:0 0 1mm;letter-spacing:.2px}
+.mg-emp div{line-height:1.35}
+.mg-obra-tit{font-weight:700;margin-top:2mm}
+.mg-obra{margin-top:2mm}
+.mg-cli{border:1px solid #888;margin-top:21mm;padding:2mm 2.5mm;min-height:20mm;white-space:pre-line;line-height:1.35}
+.mg-meta{display:grid;grid-template-columns:auto 26mm 6mm auto 30mm 6mm auto 18mm 1fr auto 8mm;align-items:center;row-gap:1.5mm;margin-top:9mm}
+.mg-meta .l{border:1px solid #888;border-right:0;padding:.6mm 1.5mm;height:4.2mm;line-height:4.2mm;white-space:nowrap}
+.mg-meta .v{border:1px solid #888;padding:.6mm 1.5mm;height:4.2mm;line-height:4.2mm;font-weight:700;text-align:center;white-space:nowrap}
+.mg-meta .l.sp{grid-column:span 1}
+.mg-lin{flex:1;margin-top:4mm;border:1px solid #888;display:flex;flex-direction:column;min-height:0}
+.mg-lin table{width:100%;border-collapse:collapse;table-layout:fixed}
+.mg-lin th{font-weight:700;background:#efefef;border-bottom:1px solid #888;padding:1mm 1mm;text-align:center}
+.mg-lin th.izq{text-align:left}
+.mg-lin td{padding:.7mm 1mm;vertical-align:top}
+.mg-lin td.n{text-align:right;white-space:nowrap}
+.mg-tot{margin-top:3mm;width:100%;border-collapse:collapse;table-layout:fixed}
+.mg-tot td{border:1px solid #888;padding:.6mm 1mm;text-align:center;height:4mm}
+.mg-tot tr:first-child td{font-weight:700}
+.mg-tot tr.vals td{font-weight:700}
+.mg-tot tr.gap td{border:0;height:1.5mm;padding:0}
+.mg-obs{margin-top:3mm}.mg-obs b{font-weight:700}
+.mg-foot{height:28mm}
+.mg-firma{border:1.5px solid #333;margin-top:3mm;padding:2mm 3mm;line-height:1.45;font-size:8.5pt}
+.mg-firma h3{font-size:9pt;margin:0 0 1mm;letter-spacing:.3px}
+.mg-firma .k{display:inline-block;min-width:34mm;color:#333}
+</style>
+</head>
+<body>
+<div class="top">
+  <h1>Confirmar recepción</h1>
+  <div class="sub">Hermanos Vizcaíno, S.C.A.</div>
+</div>
+
+<div id="err" class="error hidden"></div>
+<div id="done" class="ok hidden wrap"></div>
+
+<div id="vista-previa"><div id="albaran-contenido"></div></div>
+
+<div id="app" class="wrap hidden">
+  <!-- Paso 1: ver albarán -->
+  <div id="step1" class="step active">
+    <div class="card">
+      <h2>Albarán</h2>
+      <div class="ref" id="dRef">—</div>
+      <div class="meta" id="dMeta" style="margin-top:8px"></div>
+    </div>
+    <div class="card">
+      <h2>Material</h2>
+      <table class="lineas">
+        <thead><tr><th>Descripción</th><th style="text-align:right">Cant.</th></tr></thead>
+        <tbody id="dLineas"></tbody>
+      </table>
+      <div id="dObs" class="meta" style="margin-top:10px"></div>
+    </div>
+    <p class="notice">Revise el material antes de confirmar. No firme si aún no ha llegado o no lo ha comprobado.</p>
+    <button class="btn-main" onclick="irPaso(2)">Continuar</button>
+  </div>
+
+  <!-- Paso 2: elegir estado -->
+  <div id="step2" class="step">
+    <div class="card">
+      <h2>¿Cómo ha sido la entrega?</h2>
+      <div class="ops" id="ops">
+        <button type="button" data-s="recibido_conforme" onclick="selEstado(this)"><span class="ico">✓</span> Recibido conforme</button>
+        <button type="button" data-s="recibido_con_reservas" onclick="selEstado(this)"><span class="ico">!</span> Recibido con reservas</button>
+        <button type="button" data-s="entrega_parcial" onclick="selEstado(this)"><span class="ico">½</span> Entrega parcial</button>
+        <button type="button" data-s="no_recibido_rechazado" onclick="selEstado(this)"><span class="ico">✕</span> No recibido / rechazado</button>
+        <button type="button" data-s="aun_no_ha_llegado" onclick="selEstado(this)"><span class="ico">⏳</span> Aún no ha llegado</button>
+      </div>
+    </div>
+    <div id="extraBox" class="card hidden">
+      <h2>Observaciones</h2>
+      <label>Describa qué falta, está dañado o cualquier detalle relevante</label>
+      <textarea id="obs" placeholder="Obligatorio: qué falta, qué está dañado…"></textarea>
+    </div>
+    <button class="btn-main" id="btnPaso2" disabled onclick="continuarPaso2()">Continuar</button>
+    <button class="btn-ghost" onclick="irPaso(1)">Volver</button>
+  </div>
+
+  <!-- Paso 3: firma / aceptación -->
+  <div id="step3" class="step">
+    <div class="card">
+      <h2>Resumen de su confirmación</h2>
+      <div class="resumen" id="resumen"></div>
+      <label>Nombre completo de quien confirma</label>
+      <input type="text" id="signerName" placeholder="Nombre y apellidos" autocomplete="name">
+      <label>Cargo / empresa (opcional)</label>
+      <input type="text" id="signerRole" placeholder="Ej. encargado de obra">
+      <label style="display:flex;align-items:flex-start;gap:10px;margin-top:14px;font-size:.9rem;font-weight:500;color:#2d3748">
+        <input type="checkbox" id="accept" style="width:22px;height:22px;margin-top:2px;flex-shrink:0">
+        <span>He revisado el material y confirmo la recepción según el estado indicado. Esta aceptación queda registrada como prueba de entrega.</span>
+      </label>
+      <p class="notice">No es una firma electrónica cualificada. Es el registro de aceptación de la entrega en el sistema de la empresa.</p>
+    </div>
+    <button class="btn-main" id="btnFirmar" disabled onclick="enviarConfirmacion()">Confirmar y firmar</button>
+    <button class="btn-ghost" onclick="irPaso(2)">Volver</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  /* La URL del servicio se configura aquí o se puede pasar por query ?s=... en despliegues controlados.
+     Por seguridad, en producción se recomienda un proxy o el mismo dominio con la URL embebida en el despliegue. */
+  /* ⚠️ PEGA AQUÍ la URL /exec de tu Apps Script (la misma que usas en entregas.html).
+     El cliente abre esta página desde el SMS en SU móvil: no puede tener nada guardado. */
+  const SERVICE_URL = 'https://script.google.com/macros/s/AKfycbzaUnyAx3pl8_E3ZLRuBM4qoEIA-WcmvsTjRVwqomStbQXQ86JaBT1HcrVad5T1okIjNA/exec';
+
+  function esc(v) {
+    return String(v == null ? '' : v).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  let token = '';
+  let selectedStatus = null;
+  let delivery = null;
+
+  function qs(name) {
+    const m = location.search.match(new RegExp('[?&]' + name + '=([^&]+)'));
+    return m ? decodeURIComponent(m[1]) : '';
+  }
+
+  function showErr(msg) {
+    document.getElementById('err').textContent = msg;
+    document.getElementById('err').classList.remove('hidden');
+    document.getElementById('app').classList.add('hidden');
+  }
+
+  async function api(action, extra) {
+    if (SERVICE_URL.indexOf('PEGA_AQUI') >= 0) throw new Error('Servicio no configurado. Contacte con Hermanos Vizcaíno, S.C.A.');
+    const body = Object.assign({ action: action }, extra || {});
+    let data;
+    try {
+      const res = await fetch(SERVICE_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(body)
+      });
+      data = await res.json();
+    } catch (e) {
+      throw new Error('No hay conexión con el servidor. Compruebe la cobertura e inténtelo de nuevo.');
+    }
+    if (data.error) throw new Error(data.error);
+    return data;
+  }
+
+  async function cargar() {
+    token = qs('t');
+    if (!token || token.length < 20) {
+      showErr('Enlace no válido. Utilice el enlace que recibió por SMS.');
+      return;
+    }
+    try {
+      const data = await api('publicGetDelivery', { token: token });
+      if (data.alreadySigned) {
+        if (data.copia) { mostrarCopia(data.copia, 'Entrega confirmada'); return; }
+        document.getElementById('done').innerHTML = '<h2>Ya confirmada</h2><p>' + esc(data.message) + '</p><p style="margin-top:8px;font-size:.9rem">Estado: ' + esc(estadoTxt(data.status)) + '</p>';
+        document.getElementById('done').classList.remove('hidden');
+        return;
+      }
+      delivery = data.delivery;
+      document.getElementById('dRef').textContent = delivery.ref || 'Entrega';
+      document.getElementById('dMeta').innerHTML =
+        '<strong>' + esc(delivery.cliente) + '</strong><br>' +
+        esc(delivery.obra) + '<br>' +
+        esc(delivery.direccion) +
+        (delivery.fechaPrevista ? '<br>Fecha prevista: ' + esc(delivery.fechaPrevista) : '') +
+        (delivery.contactoNombre ? '<br>Contacto: ' + esc(delivery.contactoNombre) : '');
+      const tb = document.getElementById('dLineas');
+      const lineas = delivery.lineas || [];
+      if (!lineas.length) {
+        tb.innerHTML = '<tr><td colspan="2">Sin líneas de material</td></tr>';
+      } else {
+        tb.innerHTML = lineas.map(function (l) {
+          const desc = l.descripcion || l.desc || l.nombre || '—';
+          const cant = (l.cantidadPrevista != null ? l.cantidadPrevista : (l.cantidad != null ? l.cantidad : '')) + (l.unidad ? ' ' + l.unidad : '');
+          return '<tr><td>' + esc(desc) + (l.referencia ? '<br><small style="color:#718096">' + esc(l.referencia) + '</small>' : '') + '</td><td class="num">' + esc(cant) + '</td></tr>';
+        }).join('');
+      }
+      if (delivery.observaciones) {
+        document.getElementById('dObs').textContent = 'Obs.: ' + delivery.observaciones;
+      }
+      document.getElementById('app').classList.remove('hidden');
+    } catch (e) {
+      showErr(e.message || 'No se pudo cargar la entrega');
+    }
+  }
+
+  window.irPaso = function (n) {
+    document.querySelectorAll('.step').forEach(function (el) { el.classList.remove('active'); });
+    document.getElementById('step' + n).classList.add('active');
+  };
+
+  window.selEstado = function (btn) {
+    document.querySelectorAll('#ops button').forEach(function (b) { b.classList.remove('sel'); });
+    btn.classList.add('sel');
+    selectedStatus = btn.getAttribute('data-s');
+    document.getElementById('btnPaso2').disabled = false;
+    const needsExtra = selectedStatus === 'recibido_con_reservas' || selectedStatus === 'entrega_parcial' || selectedStatus === 'no_recibido_rechazado';
+    document.getElementById('extraBox').classList.toggle('hidden', !needsExtra);
+  };
+
+  window.continuarPaso2 = function () {
+    if (!selectedStatus) return;
+    const needsObs = ['recibido_con_reservas', 'entrega_parcial', 'no_recibido_rechazado'].indexOf(selectedStatus) >= 0;
+    if (needsObs && !document.getElementById('obs').value.trim()) {
+      alert('Describa en observaciones qué falta o qué incidencia hay.');
+      return;
+    }
+    if (selectedStatus === 'aun_no_ha_llegado') {
+      marcarNoLlegado();
+      return;
+    }
+    const labels = {
+      recibido_conforme: 'Recibido conforme',
+      recibido_con_reservas: 'Recibido con reservas',
+      entrega_parcial: 'Entrega parcial',
+      no_recibido_rechazado: 'No recibido / rechazado'
+    };
+    document.getElementById('resumen').innerHTML =
+      '<strong>' + esc(labels[selectedStatus] || selectedStatus) + '</strong>' +
+      (document.getElementById('obs').value.trim() ? '<br><br>' + esc(document.getElementById('obs').value.trim()) : '');
+    irPaso(3);
+    checkFirmar();
+  };
+
+  async function marcarNoLlegado() {
+    try {
+      await api('publicMarkNotArrived', {
+        token: token,
+        notes: document.getElementById('obs').value.trim()
+      });
+      document.getElementById('app').classList.add('hidden');
+      document.getElementById('done').innerHTML = '<h2>Registrado</h2><p>Ha indicado que el material aún no ha llegado. La entrega sigue abierta.</p>';
+      document.getElementById('done').classList.remove('hidden');
+    } catch (e) {
+      alert(e.message);
+    }
+  }
+
+  function checkFirmar() {
+    const ok = document.getElementById('signerName').value.trim().length >= 3 && document.getElementById('accept').checked;
+    document.getElementById('btnFirmar').disabled = !ok;
+  }
+  document.getElementById('signerName').addEventListener('input', checkFirmar);
+  document.getElementById('accept').addEventListener('change', checkFirmar);
+
+  window.enviarConfirmacion = async function () {
+    const name = document.getElementById('signerName').value.trim();
+    if (name.length < 3 || !document.getElementById('accept').checked) return;
+    document.getElementById('btnFirmar').disabled = true;
+    try {
+      const res = await api('publicSubmitConfirmation', {
+        token: token,
+        status: selectedStatus,
+        signerName: name,
+        signerRole: document.getElementById('signerRole').value.trim(),
+        observations: document.getElementById('obs').value.trim(),
+        acceptanceText: 'He revisado el material y confirmo la recepción según el estado indicado.'
+      });
+      document.getElementById('app').classList.add('hidden');
+      if (res.copia) { mostrarCopia(res.copia, 'Confirmación registrada. Gracias.'); return; }
+      document.getElementById('done').innerHTML =
+        '<h2>Confirmación registrada</h2>' +
+        '<p>' + esc(res.message || 'Gracias.') + '</p>' +
+        '<p style="margin-top:10px;font-size:.9rem">Estado: ' + esc(estadoTxt(res.status)) + '<br>' + esc(fechaES(res.signedAt)) + '</p>';
+      document.getElementById('done').classList.remove('hidden');
+    } catch (e) {
+      alert(e.message);
+      document.getElementById('btnFirmar').disabled = false;
+    }
+  };
+
+
+  /* ---------- Copia del albarán firmado para el receptor ---------- */
+  const ESTADOS = { recibido_conforme: 'Recibido conforme', recibido_con_reservas: 'Recibido con reservas',
+    entrega_parcial: 'Entrega parcial', no_recibido_rechazado: 'No recibido / rechazado', aun_no_ha_llegado: 'Aún no ha llegado' };
+  function estadoTxt(s) { return ESTADOS[s] || s || ''; }
+  function fechaES(iso) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})T?(\d{2}:\d{2}(:\d{2})?)?/.exec(iso || '');
+    return m ? (m[3] + '/' + m[2] + '/' + m[1] + (m[4] ? ' ' + m[4] : '')) : (iso || '');
+  }
+  function nf(n, d) {
+    if (n === '' || n == null || isNaN(Number(n))) return '';
+    return Number(n).toLocaleString('es-ES', { minimumFractionDigits: d, maximumFractionDigits: d, useGrouping: 'always' });
+  }
+  const EMPRESA_MG = ['PARAJE EL COGOCHE, S/N', '04867 MACAEL', 'ALMERIA', 'NIF F04275020', 'Tfno. 950 128 081 -', 'hnosvizcaino@gmail.com'];
+
+  function htmlCopia(c) {
+    const m = /^(\d+)-\d+\/(\d{4})$/.exec(c.ref || '');
+    const serie = m ? (m[1] + '/' + m[2]) : '';
+    const obraTxt = c.obra ? 'OBRA: ' + c.obra : '';
+    const dirCli = String(c.direccion || '').split(/\s*[\n;]\s*|,\s*(?=\d{5}\b)/).filter(Boolean).join('\n');
+    let tM3 = 0, tM2 = 0, tMl = 0, tUnd = 0;
+    const filas = (c.lineas || []).map(function (l) {
+      const met = Number(l.metros) || 0;
+      if (l.unidad === 'm2') tM2 += met; else if (l.unidad === 'ml') tMl += met; else if (l.unidad === 'm3') tM3 += met;
+      tUnd += Number(l.cantidad) || 0;
+      const metTxt = (l.unidad && l.unidad !== 'und' && l.metros != null && l.metros !== '') ? nf(met, 4) + ' ' + esc(l.unidad) : '';
+      return '<tr><td>' + esc(l.codigo) + '</td><td>' + esc(l.descripcion) + (l.extras ? ' ' + esc(l.extras) : '') + '</td>' +
+        '<td class="n">' + nf(l.largo, 1) + '</td><td class="n">' + nf(l.ancho, 1) + '</td><td class="n">' + nf(l.alto, 1) + '</td>' +
+        '<td class="n">' + nf(l.cantidad, 1) + '</td><td class="n">' + metTxt + '</td></tr>';
+    });
+    const paginas = [[]]; let usados = 0;
+    (c.lineas || []).forEach(function (l, i) {
+      const alto = Math.max(1, Math.ceil((String(l.descripcion || '') + (l.extras ? ' ' + l.extras : '')).length / 52));
+      if (usados + alto > 30 && paginas[paginas.length - 1].length) { paginas.push([]); usados = 0; }
+      paginas[paginas.length - 1].push(filas[i]); usados += alto;
+    });
+    const cab = function (pag) {
+      return '<div class="mg-top"><div class="mg-emp"><h1>HERMANOS VIZCAINO,&nbsp; S.C.A.</h1>' +
+        EMPRESA_MG.map(function (x) { return '<div>' + x + '</div>'; }).join('') +
+        '<div class="mg-obra-tit">&nbsp;OBRA DEL CLIENTE:</div><div class="mg-obra">' + esc(obraTxt) + '</div></div>' +
+        '<div class="mg-cli">' + esc(c.cliente) + (dirCli ? '\n' + esc(dirCli) : '') + '</div></div>' +
+        '<div class="mg-meta">' +
+          '<div class="l">Nº Albarán</div><div class="v">' + esc(c.ref) + '</div><div></div>' +
+          '<div class="l">Nif/Cif</div><div class="v">' + esc(c.nif) + '</div><div></div>' +
+          '<div class="l">Serie</div><div class="v">' + esc(serie) + '</div><div></div>' +
+          '<div class="l">Nº Página</div><div class="v">' + pag + '</div>' +
+          '<div class="l">Fecha</div><div class="v">' + esc(c.fecha) + '</div><div></div>' +
+          '<div class="l">Cod. Cliente</div><div class="v">' + esc(c.clienteCodigo) + '</div>' +
+        '</div>';
+    };
+    const thead = '<table><colgroup><col style="width:9%"><col style="width:47%"><col style="width:7%"><col style="width:7%"><col style="width:7%"><col style="width:9%"><col style="width:14%"></colgroup>' +
+      '<thead><tr><th>Código</th><th class="izq">Descripción</th><th>Largo</th><th>Ancho</th><th>Grueso</th><th>Cant.</th><th>Metros</th></tr></thead><tbody>';
+    const firma = '<div class="mg-firma"><h3>CONFORMIDAD DE RECEPCIÓN · REGISTRO ELECTRÓNICO</h3>' +
+      '<div><span class="k">Estado:</span><b>' + esc(estadoTxt(c.status)) + '</b></div>' +
+      '<div><span class="k">Firmado por:</span><b>' + esc(c.signerName) + '</b>' + (c.signerRole ? ' · ' + esc(c.signerRole) : '') + '</div>' +
+      '<div><span class="k">Fecha y hora:</span>' + esc(fechaES(c.signedAt)) + '</div>' +
+      (c.observations ? '<div><span class="k">Observaciones:</span>' + esc(c.observations) + '</div>' : '') +
+      '<div><span class="k">Texto aceptado:</span>«' + esc(c.acceptanceText) + '»</div>' +
+      '<div style="font-size:7pt;color:#555;margin-top:1mm">Confirmado mediante enlace personal enviado al ' + esc(c.contactoTelefono) +
+      ' · Ref. ' + esc(c.versionId) + '. No es firma electrónica cualificada.</div></div>';
+    return paginas.map(function (f, i) {
+      const ultima = i === paginas.length - 1;
+      return '<div class="mg-page">' + cab(i + 1) +
+        '<div class="mg-lin">' + thead + f.join('') + '</tbody></table></div>' +
+        (ultima
+          ? '<table class="mg-tot"><tr><td>Total m3</td><td>Total m2</td><td>Total ml</td><td>Total Unidades</td><td></td><td></td><td></td><td></td></tr>' +
+            '<tr class="gap"><td colspan="8"></td></tr>' +
+            '<tr class="vals"><td>' + (tM3 ? nf(tM3, 4) : '') + '</td><td>' + (tM2 ? nf(tM2, 4) : '') + '</td><td>' + (tMl ? nf(tMl, 4) : '') + '</td><td>' + nf(tUnd, 1) + '</td><td></td><td></td><td></td><td></td></tr></table>' +
+            '<div class="mg-obs">Observaciones: <b>' + esc(obraTxt) + '</b></div>' + firma
+          : '<div class="mg-foot"></div>') +
+        '</div>';
+    }).join('');
+  }
+
+  let copiaActual = null;
+  function mostrarCopia(c, titulo) {
+    copiaActual = c;
+    document.title = 'Albaran ' + String(c.ref || '').replace(/\//g, '-') + ' firmado';
+    document.getElementById('app').classList.add('hidden');
+    const d = document.getElementById('done');
+    d.innerHTML = '<h2>' + esc(titulo) + '</h2>' +
+      '<div class="copia">' +
+        'Albarán <b>' + esc(c.ref) + '</b><br>' +
+        'Estado: <b>' + esc(estadoTxt(c.status)) + '</b><br>' +
+        'Firmado por: ' + esc(c.signerName) + (c.signerRole ? ' · ' + esc(c.signerRole) : '') + '<br>' +
+        'Fecha: ' + esc(fechaES(c.signedAt)) +
+        (c.observations ? '<br>Observaciones: ' + esc(c.observations) : '') +
+      '</div>' +
+      '<button class="btn-pdf" onclick="descargarCopia()">Descargar albarán firmado (PDF)</button>' +
+      '<p style="font-size:.82rem;margin-top:10px">En la pantalla siguiente elija «Guardar como PDF». Este enlace es su copia: puede volver a abrirlo cuando quiera para ver el albarán firmado.</p>';
+    d.classList.remove('hidden');
+  }
+  window.descargarCopia = function () {
+    if (!copiaActual) return;
+    document.getElementById('albaran-contenido').innerHTML = htmlCopia(copiaActual);
+    window.print();
+  };
+
+  /* Aviso de privacidad breve */
+  const notice = document.createElement('p');
+  notice.className = 'notice';
+  notice.style.padding = '0 12px 20px';
+  notice.innerHTML = 'Sus datos se usan únicamente para documentar la recepción del material. Contacto: Hermanos Vizcaíno, S.C.A.';
+  document.body.appendChild(notice);
+
+  cargar();
+})();
+</script>
+</body>
+</html>

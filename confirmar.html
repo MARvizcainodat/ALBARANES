@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>Confirmar entrega · Hermanos Vizcaíno, S.C.A.</title>
 <style>
@@ -55,7 +55,7 @@ textarea { min-height: 90px; resize: vertical; }
 .resumen { background: #edf2f7; border-radius: 10px; padding: 12px; font-size: .9rem; margin: 10px 0; }
 .copia { text-align: left; background: #fff; color: #1a202c; border: 1px solid var(--borde); border-radius: 12px; padding: 14px; margin-top: 14px; font-size: .92rem; line-height: 1.5; }
 .copia b { color: var(--azul); }
-.pdf-pages canvas { width: 100%; height: auto; display: block; border: 1px solid var(--borde); border-radius: 6px; margin-bottom: 8px; background: #fff; }
+.pdf-pages canvas { touch-action: pinch-zoom pan-x pan-y; width: 100%; height: auto; display: block; border: 1px solid var(--borde); border-radius: 6px; margin-bottom: 8px; background: #fff; }
 .pdf-hint { font-size: .78rem; color: #718096; margin-top: 4px; }
 .btn-pdf2 { display: block; width: 100%; margin-top: 10px; padding: 14px; border: 2px solid var(--ok); border-radius: 12px; background: #fff; color: var(--ok); font-weight: 700; font-size: 1rem; min-height: 52px; }
 .btn-pdf { display: block; width: 100%; margin-top: 12px; padding: 16px; border: none; border-radius: 12px; background: var(--ok); color: #fff; font-weight: 700; font-size: 1.05rem; min-height: 56px; }
@@ -452,7 +452,7 @@ textarea { min-height: 90px; resize: vertical; }
       el.innerHTML = '';
       for (let n = 1; n <= pdf.numPages; n++) {
         const page = await pdf.getPage(n);
-        const vp = page.getViewport({ scale: 2 });
+        const vp = page.getViewport({ scale: 3 });   /* más resolución: se ve nítido al ampliar */
         const c = document.createElement('canvas');
         c.width = vp.width; c.height = vp.height;
         el.appendChild(c);
@@ -464,13 +464,7 @@ textarea { min-height: 90px; resize: vertical; }
   }
   window.descargarOriginal = function () {
     if (!pdfOriginal) return;
-    const bin = atob(pdfOriginal), bytes = new Uint8Array(bin.length);
-    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-    const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
-    const a = document.createElement('a');
-    a.href = url; a.download = 'Albaran ' + String((copiaActual && copiaActual.ref) || (delivery && delivery.ref) || '').replace(/\//g, '-') + '.pdf';
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(function () { URL.revokeObjectURL(url); }, 5000);
+    descargarB64(pdfOriginal, 'Albaran ' + String((copiaActual && copiaActual.ref) || (delivery && delivery.ref) || '').replace(/\//g, '-') + '.pdf');
   };
 
   let copiaActual = null;
@@ -489,15 +483,35 @@ textarea { min-height: 90px; resize: vertical; }
         (c.observations ? '<br>Observaciones: ' + esc(c.observations) : '') +
       '</div>' +
       (pdfOriginal ? '<button class="btn-pdf2" onclick="descargarOriginal()">Descargar albarán original (PDF)</button>' : '') +
-      '<button class="btn-pdf" onclick="descargarCopia()">' + (pdfOriginal ? 'Descargar hoja de conformidad (PDF)' : 'Descargar albarán firmado (PDF)') + '</button>' +
+      '<button class="btn-pdf" onclick="descargarCopia(this)">' + (pdfOriginal ? 'Descargar hoja de conformidad (PDF)' : 'Descargar albarán firmado (PDF)') + '</button>' +
       '<p style="font-size:.82rem;margin-top:10px">' + (pdfOriginal ? 'La hoja de conformidad recoge quién firmó, cuándo y el estado de la entrega; acompaña al albarán original. ' : '') +
-      'En la pantalla siguiente elija «Guardar como PDF». Este enlace es su copia: puede volver a abrirlo cuando quiera.</p>';
+      'Este enlace es su copia: puede volver a abrirlo cuando quiera.</p>';
     d.classList.remove('hidden');
   }
-  window.descargarCopia = function () {
+  /* Descarga un PDF a partir de base64 (funciona en móvil, sin «imprimir») */
+  function descargarB64(b64, nombre) {
+    const bin = atob(b64), bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+    const a = document.createElement('a');
+    a.href = url; a.download = nombre;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 10000);
+  }
+  /* Hoja de conformidad: la genera el servidor en PDF. Si fallara, se usa «imprimir» como antes. */
+  window.descargarCopia = async function (btn) {
     if (!copiaActual) return;
-    document.getElementById('albaran-contenido').innerHTML = htmlCopia(copiaActual);
-    window.print();
+    const txt = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.textContent = 'Preparando PDF…'; }
+    try {
+      const r = await api('publicGetConformidadPdf', { token: token });
+      descargarB64(r.base64, r.nombre || 'Conformidad.pdf');
+    } catch (e) {
+      document.getElementById('albaran-contenido').innerHTML = htmlCopia(copiaActual);
+      window.print();
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = txt; }
+    }
   };
 
   /* Aviso de privacidad breve */

@@ -55,6 +55,9 @@ textarea { min-height: 90px; resize: vertical; }
 .resumen { background: #edf2f7; border-radius: 10px; padding: 12px; font-size: .9rem; margin: 10px 0; }
 .copia { text-align: left; background: #fff; color: #1a202c; border: 1px solid var(--borde); border-radius: 12px; padding: 14px; margin-top: 14px; font-size: .92rem; line-height: 1.5; }
 .copia b { color: var(--azul); }
+.pdf-pages canvas { width: 100%; height: auto; display: block; border: 1px solid var(--borde); border-radius: 6px; margin-bottom: 8px; background: #fff; }
+.pdf-hint { font-size: .78rem; color: #718096; margin-top: 4px; }
+.btn-pdf2 { display: block; width: 100%; margin-top: 10px; padding: 14px; border: 2px solid var(--ok); border-radius: 12px; background: #fff; color: var(--ok); font-weight: 700; font-size: 1rem; min-height: 52px; }
 .btn-pdf { display: block; width: 100%; margin-top: 12px; padding: 16px; border: none; border-radius: 12px; background: var(--ok); color: #fff; font-weight: 700; font-size: 1.05rem; min-height: 56px; }
 #vista-previa{display:none}
 @page{size:A4 portrait;margin:9mm}
@@ -116,8 +119,13 @@ textarea { min-height: 90px; resize: vertical; }
       <div class="ref" id="dRef">—</div>
       <div class="meta" id="dMeta" style="margin-top:8px"></div>
     </div>
+    <div class="card hidden" id="cardPdf">
+      <h2>Albarán oficial</h2>
+      <div class="pdf-pages" id="dPdf"><div class="meta">Cargando documento…</div></div>
+      <div class="pdf-hint">Puede ampliarlo con los dedos.</div>
+    </div>
     <div class="card">
-      <h2>Material</h2>
+      <h2 id="tMaterial">Material</h2>
       <table class="lineas">
         <thead><tr><th>Descripción</th><th style="text-align:right">Cant.</th></tr></thead>
         <tbody id="dLineas"></tbody>
@@ -245,12 +253,22 @@ textarea { min-height: 90px; resize: vertical; }
       } else {
         tb.innerHTML = lineas.map(function (l) {
           const desc = l.descripcion || l.desc || l.nombre || '—';
-          const cant = (l.cantidadPrevista != null ? l.cantidadPrevista : (l.cantidad != null ? l.cantidad : '')) + (l.unidad ? ' ' + l.unidad : '');
+          /* unidades + metros (antes salía «600 m2» cuando eran 600 piezas) */
+          const ud = l.cantidadPrevista != null ? l.cantidadPrevista : l.cantidad;
+          const und = (ud != null && ud !== '') ? nf(ud, 0) + ' ud' : '';
+          const met = (l.unidad && l.unidad !== 'und' && l.metros) ? nf(l.metros, 2) + ' ' + (l.unidad === 'm2' ? 'm²' : l.unidad) : '';
+          const cant = (l.codigo === '' && !und) ? '' : [und, met].filter(Boolean).join(' · ');
           return '<tr><td>' + esc(desc) + (l.referencia ? '<br><small style="color:#718096">' + esc(l.referencia) + '</small>' : '') + '</td><td class="num">' + esc(cant) + '</td></tr>';
         }).join('');
       }
       if (delivery.observaciones) {
         document.getElementById('dObs').textContent = 'Obs.: ' + delivery.observaciones;
+      }
+      if (delivery.pdfBase64) {
+        pdfOriginal = delivery.pdfBase64;
+        document.getElementById('cardPdf').classList.remove('hidden');
+        document.getElementById('tMaterial').textContent = 'Resumen del material';
+        pintarPdf(delivery.pdfBase64, document.getElementById('dPdf'));
       }
       document.getElementById('app').classList.remove('hidden');
     } catch (e) {
@@ -417,9 +435,48 @@ textarea { min-height: 90px; resize: vertical; }
     }).join('');
   }
 
+  /* ---------- PDF oficial (MN Gest): se dibuja con pdf.js, sin descargar nada ---------- */
+  let pdfOriginal = '';
+  function cargarScript(src) {
+    return new Promise(function (ok, ko) { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = ko; document.head.appendChild(s); });
+  }
+  async function pintarPdf(b64, el) {
+    try {
+      if (!window.pdfjsLib) {
+        await cargarScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+      }
+      const bin = atob(b64), bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const pdf = await window.pdfjsLib.getDocument({ data: bytes }).promise;
+      el.innerHTML = '';
+      for (let n = 1; n <= pdf.numPages; n++) {
+        const page = await pdf.getPage(n);
+        const vp = page.getViewport({ scale: 2 });
+        const c = document.createElement('canvas');
+        c.width = vp.width; c.height = vp.height;
+        el.appendChild(c);
+        await page.render({ canvasContext: c.getContext('2d'), viewport: vp }).promise;
+      }
+    } catch (e) {
+      el.innerHTML = '<div class="meta">No se pudo mostrar el documento aquí. Revise el resumen del material.</div>';
+    }
+  }
+  window.descargarOriginal = function () {
+    if (!pdfOriginal) return;
+    const bin = atob(pdfOriginal), bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+    const a = document.createElement('a');
+    a.href = url; a.download = 'Albaran ' + String((copiaActual && copiaActual.ref) || (delivery && delivery.ref) || '').replace(/\//g, '-') + '.pdf';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 5000);
+  };
+
   let copiaActual = null;
   function mostrarCopia(c, titulo) {
     copiaActual = c;
+    if (c.pdfBase64) pdfOriginal = c.pdfBase64;
     document.title = 'Albaran ' + String(c.ref || '').replace(/\//g, '-') + ' firmado';
     document.getElementById('app').classList.add('hidden');
     const d = document.getElementById('done');
@@ -431,8 +488,10 @@ textarea { min-height: 90px; resize: vertical; }
         'Fecha: ' + esc(fechaES(c.signedAt)) +
         (c.observations ? '<br>Observaciones: ' + esc(c.observations) : '') +
       '</div>' +
-      '<button class="btn-pdf" onclick="descargarCopia()">Descargar albarán firmado (PDF)</button>' +
-      '<p style="font-size:.82rem;margin-top:10px">En la pantalla siguiente elija «Guardar como PDF». Este enlace es su copia: puede volver a abrirlo cuando quiera para ver el albarán firmado.</p>';
+      (pdfOriginal ? '<button class="btn-pdf2" onclick="descargarOriginal()">Descargar albarán original (PDF)</button>' : '') +
+      '<button class="btn-pdf" onclick="descargarCopia()">' + (pdfOriginal ? 'Descargar hoja de conformidad (PDF)' : 'Descargar albarán firmado (PDF)') + '</button>' +
+      '<p style="font-size:.82rem;margin-top:10px">' + (pdfOriginal ? 'La hoja de conformidad recoge quién firmó, cuándo y el estado de la entrega; acompaña al albarán original. ' : '') +
+      'En la pantalla siguiente elija «Guardar como PDF». Este enlace es su copia: puede volver a abrirlo cuando quiera.</p>';
     d.classList.remove('hidden');
   }
   window.descargarCopia = function () {

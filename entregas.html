@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Entregas · Mármoles Hermanos Vizcaíno</title>
+<title>Entregas · Hermanos Vizcaíno, S.C.A.</title>
 <style>
 :root {
   --azul: #1a365d; --azul-m: #2c5282; --claro: #ebf8ff; --borde: #cbd5e0;
@@ -37,6 +37,15 @@ body { font-family: system-ui, -apple-system, sans-serif; background: var(--fond
 .b-pendiente_papel { background: #e9d8fd; color: #553c9a; }
 .b-papel_incorporado { background: #e2e8f0; color: #2d3748; }
 .actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.mg-box { background: #fff; border: 2px solid var(--azul-m); border-radius: 12px; padding: 12px 14px; margin-bottom: 16px; }
+.mg-box summary { cursor: pointer; font-weight: 700; color: var(--azul); font-size: 1rem; list-style: none; display: flex; justify-content: space-between; align-items: center; }
+.mg-box summary::-webkit-details-marker { display: none; }
+.mg-box .hint { font-size: .8rem; color: #718096; margin: 6px 0 10px; }
+.mg-item { display: flex; justify-content: space-between; gap: 10px; align-items: center; padding: 10px 0; border-top: 1px solid #edf2f7; }
+.mg-item b { color: var(--azul); }
+.mg-item .m { font-size: .8rem; color: #718096; }
+.mg-lineas { font-size: .82rem; background: #edf2f7; border-radius: 8px; padding: 8px 10px; margin-top: 8px; max-height: 160px; overflow-y: auto; }
+.mg-lineas div { padding: 2px 0; }
 .empty { text-align: center; padding: 40px 20px; color: #718096; }
 .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.45); z-index: 100; align-items: flex-end; justify-content: center; }
 .modal.open { display: flex; }
@@ -125,6 +134,12 @@ body { font-family: system-ui, -apple-system, sans-serif; background: var(--fond
       <button class="btn btn-sm" style="background:rgba(255,255,255,.2);color:#fff" onclick="cargar()">Actualizar</button>
     </div>
     <div class="layout">
+      <details class="mg-box" id="mgBox" open>
+        <summary><span>Albaranes de MN Gest · enviar a firma</span><span class="badge b-sms_enviado" id="mgCount">0</span></summary>
+        <div class="hint">Albaranes sin firmar que el PC ha pasado de MN Gest a datt, con sus líneas. Se envían con el mismo número de MN Gest.</div>
+        <div class="filters" style="margin-bottom:4px"><input type="search" id="mgQ" placeholder="Buscar nº, cliente u obra…" oninput="renderMg()"></div>
+        <div id="mgLista"></div>
+      </details>
       <div class="filters">
         <input type="search" id="fQ" placeholder="Buscar ref, cliente, obra…" oninput="render()">
         <select id="fStatus" onchange="render()">
@@ -191,6 +206,34 @@ body { font-family: system-ui, -apple-system, sans-serif; background: var(--fond
   </div>
 </div>
 
+<div id="modalMg" class="modal">
+  <div class="box">
+    <div class="box-h">
+      <strong id="mgTit">Enviar a firma</strong>
+      <button class="btn btn-sm" style="background:rgba(255,255,255,.25);color:#fff" onclick="cerrarModal('modalMg')">Cerrar</button>
+    </div>
+    <div class="box-b">
+      <div id="mgResumen" class="meta"></div>
+      <label>PDF oficial del albarán (el de MN Gest, sin firmar)</label>
+      <input type="file" id="mgPdf" accept="application/pdf,.pdf" onchange="revisarPdfMg()">
+      <div id="mgPdfAviso" style="font-size:.82rem;margin-top:6px"></div>
+      <div id="mgLin" class="mg-lineas"></div>
+      <label>Quién recibe en obra</label>
+      <input type="text" id="mgContacto" placeholder="Nombre del encargado">
+      <label>Teléfono (al que va el SMS)</label>
+      <input type="tel" id="mgTel" inputmode="tel" placeholder="Teléfono móvil">
+      <label>Dirección de entrega (opcional)</label>
+      <input type="text" id="mgDir" placeholder="Dirección de la obra">
+      <label>Fecha prevista (opcional)</label>
+      <input type="date" id="mgFecha">
+      <div class="actions" style="margin-top:14px">
+        <button class="btn btn-ok" id="mgBtn" onclick="enviarMg()">Crear entrega y preparar SMS</button>
+      </div>
+      <p style="font-size:.75rem;color:#718096;margin-top:10px">Se crea un prealbarán con el número de MN Gest (no se gasta número nuevo). Si el albarán ya se había enviado y no está firmado, el enlace anterior deja de valer.</p>
+    </div>
+  </div>
+</div>
+
 <div id="vista-previa"><div id="albaran-contenido"></div></div>
 <div id="toast" class="toast"></div>
 
@@ -198,7 +241,8 @@ body { font-family: system-ui, -apple-system, sans-serif; background: var(--fond
 (function () {
   const CFG_KEY = 'entregasVizcainoCfg';
   let cfg = null;
-  let cache = { prealbaranes: [], deliveryVersions: [], deliveryTokens: [], smsOutbox: [], deliveryEvents: [] };
+  let cache = { prealbaranes: [], deliveryVersions: [], deliveryTokens: [], smsOutbox: [], deliveryEvents: [], albaranes: [], clients: [], works: [] };
+  let mgActual = null;
   let currentOutboxId = null;
   let currentVersionId = null;
 
@@ -249,7 +293,11 @@ body { font-family: system-ui, -apple-system, sans-serif; background: var(--fond
       cache.deliveryTokens = parse('deliveryTokens');
       cache.smsOutbox = parse('smsOutbox');
       cache.deliveryEvents = parse('deliveryEvents');
+      cache.albaranes = parse('albaranes');
+      cache.clients = parse('clients');
+      cache.works = parse('works');
       render();
+      renderMg();
       toast('Datos actualizados');
     } catch (e) {
       toast('Error: ' + e.message);
@@ -303,10 +351,130 @@ body { font-family: system-ui, -apple-system, sans-serif; background: var(--fond
         '<div class="actions">' +
           (!v.isSigned && v.status !== 'papel_incorporado' ? '<button class="btn btn-sm btn-primary" onclick="prepararSms(\'' + v.id + '\')">Preparar SMS</button>' : '') +
           (!v.isSigned ? '<button class="btn btn-sm btn-warn" onclick="marcarPapel(\'' + v.id + '\')">Gestión en papel</button>' : '') +
-          (v.isSigned || v.confirmationType === 'paper' ? '<button class="btn btn-sm btn-ok" onclick="imprimirFirmado(\'' + v.id + '\')">Imprimir albarán firmado</button>' : '') +
+          (s.pdfFileId ? '<button class="btn btn-sm btn-ghost" onclick="verPdfOficial(\'' + s.pdfFileId + '\')">PDF oficial</button>' : '') +
+          (v.isSigned || v.confirmationType === 'paper' ? '<button class="btn btn-sm btn-ok" onclick="imprimirFirmado(\'' + v.id + '\')">' + (s.pdfFileId ? 'Imprimir hoja de conformidad' : 'Imprimir albarán firmado') + '</button>' : '') +
           '<button class="btn btn-sm btn-ghost" onclick="verEventos(\'' + v.prealbaranId + '\',\'' + v.id + '\')">Historial</button>' +
         '</div></div>';
     }).join('');
+  };
+
+  /* ---------- Albaranes de MN Gest → enviar a firma ---------- */
+  function norm(t) { return String(t || '').toLocaleLowerCase('es').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ').trim(); }
+  function numAlb(a) { const m = /^alb(\d+)-/.exec(a.id || ''); return m ? Number(m[1]) : 0; }
+  function versionDe(a) {
+    const pre = a.prealbaranId ? cache.prealbaranes.find(function (p) { return p.id === a.prealbaranId; }) : null;
+    return pre && pre.currentVersionId ? cache.deliveryVersions.find(function (v) { return v.id === pre.currentVersionId; }) : null;
+  }
+  window.renderMg = function () {
+    const q = norm(document.getElementById('mgQ').value);
+    const lista = cache.albaranes.filter(function (a) {
+      if (a.firmado === true) return false;
+      const v = versionDe(a);
+      if (v && (v.isSigned || v.confirmationType === 'paper')) return false;
+      if (!q) return true;
+      return norm([numAlb(a), a.cliente, a.obra].join(' ')).indexOf(q) >= 0;
+    }).sort(function (x, y) { return numAlb(y) - numAlb(x); });
+    document.getElementById('mgCount').textContent = lista.length;
+    const el = document.getElementById('mgLista');
+    if (!cache.albaranes.length) { el.innerHTML = '<div class="m" style="padding:8px 0">datt no envía la pestaña de albaranes (falta «albaranes» en COLS del Code.gs) o aún no hay ninguno.</div>'; return; }
+    if (!lista.length) { el.innerHTML = '<div class="m" style="padding:8px 0">No hay albaranes sin firmar con esa búsqueda.</div>'; return; }
+    el.innerHTML = lista.slice(0, q ? 40 : 12).map(function (a) {
+      const v = versionDe(a);
+      const nl = (a.lineas || []).filter(function (l) { return !l.texto; }).length;
+      const estado = (v ? '<span class="badge b-' + v.status + '">' + statusLabel(v.status) + '</span> ' : '') +
+        (a.pdf && a.pdf.fileId ? '<span class="badge b-recibido_conforme">PDF oficial</span>' : '');
+      return '<div class="mg-item"><div><b>Alb. ' + numAlb(a) + '</b> · ' + escH(a.cliente || '—') +
+        '<div class="m">' + escH(fechaES(a.fecha)) + (a.obra ? ' · ' + escH(a.obra) : '') + ' · ' + (nl ? nl + ' línea' + (nl === 1 ? '' : 's') : 'sin líneas todavía') + '</div>' + estado + '</div>' +
+        (nl ? '<button class="btn btn-sm btn-primary" onclick="abrirMg(\'' + a.id + '\')">' + (v ? 'Reenviar' : 'Enviar a firma') + '</button>' : '') + '</div>';
+    }).join('') + (!q && lista.length > 12 ? '<div class="m" style="padding:8px 0">Hay ' + (lista.length - 12) + ' más: búscalos por número o cliente.</div>' : '');
+  };
+  window.abrirMg = function (albId) {
+    const a = cache.albaranes.find(function (x) { return x.id === albId; });
+    if (!a) return;
+    mgActual = a;
+    const cli = cache.clients.find(function (c) { return String(Number(c.companyCode || c.code)) === String(Number(a.clienteCodigo)); });
+    const obra = norm(String(a.obra || '').replace(/^\s*(REF\.?\s*)?OBRA\s*[:.;]?\s*/i, ''));
+    const w = cli && obra ? cache.works.find(function (x) { const n = norm(x.name); return x.clientId === cli.id && n && (obra.indexOf(n) >= 0 || n.indexOf(obra) >= 0); }) : null;
+    const pre = a.prealbaranId ? cache.prealbaranes.find(function (p) { return p.id === a.prealbaranId; }) : null;
+    document.getElementById('mgTit').textContent = 'Enviar a firma · Alb. ' + numAlb(a);
+    document.getElementById('mgResumen').innerHTML = '<b>' + escH(a.cliente) + '</b><br>' + escH(fechaES(a.fecha)) + (a.obra ? ' · ' + escH(a.obra) : '');
+    document.getElementById('mgLin').innerHTML = (a.lineas || []).map(function (l) {
+      if (l.texto) return '<div><i>' + escH(l.descripcion) + '</i></div>';
+      const med = [l.largo, l.ancho, l.alto].filter(function (x) { return x; }).join('×');
+      return '<div>' + escH(l.descripcion) + (med ? ' · ' + med : '') + ' · <b>' + nf(l.cantidad, 0) + ' ud' + (l.unidad !== 'und' && l.metros ? ' · ' + nf(l.metros, 2) + ' ' + l.unidad : '') + '</b></div>';
+    }).join('');
+    document.getElementById('mgContacto').value = (pre && pre.contactoNombre) || (w && w.foremanName) || (cli && cli.contactName) || '';
+    document.getElementById('mgTel').value = (pre && pre.contactoTelefono) || (w && w.foremanPhone) || (cli && cli.phone) || '';
+    document.getElementById('mgDir').value = (pre && pre.direccionEntrega) || (w && w.address) || '';
+    document.getElementById('mgFecha').value = (pre && pre.fechaPrevista) || '';
+    document.getElementById('mgBtn').disabled = false;
+    document.getElementById('mgPdf').value = '';
+    revisarPdfMg();
+    document.getElementById('modalMg').classList.add('open');
+  };
+  /* Aviso según el PDF elegido: debe ser «ALBARAN NNN.pdf», nunca el firmado (F) ni el DECA */
+  window.revisarPdfMg = function () {
+    const a = mgActual, el = document.getElementById('mgPdfAviso');
+    const f = document.getElementById('mgPdf').files[0];
+    if (!a) return;
+    if (!f) {
+      el.innerHTML = a.pdf && a.pdf.fileId
+        ? '✓ Ya se subió antes «' + escH(a.pdf.nombre) + '»: el cliente verá ese PDF. Elige otro solo si lo has cambiado.'
+        : 'Elige «ALBARAN ' + numAlb(a) + '.pdf» de la carpeta ALBARANES 2026. Si no eliges ninguno, el cliente verá solo el resumen con los datos.';
+      return;
+    }
+    const n = f.name.toUpperCase();
+    const avisos = [];
+    if (n.indexOf(String(numAlb(a))) < 0) avisos.push('el nombre no lleva el nº ' + numAlb(a));
+    if (/(^|[\s_\-])F([\s_\-.(]|$)/.test(n.replace(/\.PDF$/, ' .PDF'))) avisos.push('parece el FIRMADO (F)');
+    if (n.indexOf('DECA') >= 0) avisos.push('parece un DECA');
+    if (f.size > 10 * 1024 * 1024) avisos.push('pesa más de 10 MB');
+    el.innerHTML = avisos.length ? '<span style="color:var(--crit)">⚠ Revisa el archivo: ' + avisos.join(', ') + '.</span>' : '✓ El cliente verá este PDF oficial y debajo el resumen de líneas.';
+  };
+  function aBase64(file) {
+    return new Promise(function (ok, ko) { const r = new FileReader(); r.onload = function () { ok(String(r.result).split(',')[1]); }; r.onerror = ko; r.readAsDataURL(file); });
+  }
+  window.enviarMg = async function () {
+    if (!mgActual) return;
+    const tel = document.getElementById('mgTel').value.trim();
+    if (!tel) { toast('Pon el teléfono al que va el SMS'); return; }
+    const f = document.getElementById('mgPdf').files[0];
+    if (f && f.size > 10 * 1024 * 1024) { toast('El PDF pesa más de 10 MB'); return; }
+    if (f && /DECA/i.test(f.name) && !confirm('El archivo parece un DECA, no el albarán. ¿Subirlo igualmente?')) return;
+    const btn = document.getElementById('mgBtn');
+    btn.disabled = true;
+    try {
+      if (f) {
+        toast('Subiendo PDF…');
+        await api('uploadAlbaranPdf', { albaranId: mgActual.id, fileName: f.name, mtime: new Date(f.lastModified).toISOString().slice(0, 19), contentBase64: await aBase64(f) });
+      }
+      const r = await api('prealbaranFromMnGest', {
+        albaranId: mgActual.id,
+        contactoNombre: document.getElementById('mgContacto').value.trim(),
+        contactoTelefono: tel,
+        direccionEntrega: document.getElementById('mgDir').value.trim(),
+        fechaPrevista: document.getElementById('mgFecha').value,
+        actor: 'usuario'
+      });
+      cerrarModal('modalMg');
+      toast('Entrega creada para el albarán ' + numAlb(mgActual) + (r.sinPdf ? ' (sin PDF oficial)' : ''));
+      await cargar();
+      await prepararSms(r.versionId);
+    } catch (e) {
+      toast('Error: ' + e.message);
+      btn.disabled = false;
+    }
+  };
+
+  window.verPdfOficial = async function (fileId) {
+    const w = window.open('', '_blank');
+    try {
+      const r = await api('getAlbaranPdf', { fileId: fileId });
+      const bin = atob(r.base64), bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
+      if (w) w.location = url; else window.open(url, '_blank');
+    } catch (e) { if (w) w.close(); toast('Error: ' + e.message); }
   };
 
   window.prepararSms = async function (versionId) {

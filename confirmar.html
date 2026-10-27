@@ -57,6 +57,11 @@ textarea { min-height: 90px; resize: vertical; }
 .copia b { color: var(--azul); }
 .pdf-pages canvas { touch-action: pinch-zoom pan-x pan-y; width: 100%; height: auto; display: block; border: 1px solid var(--borde); border-radius: 6px; margin-bottom: 8px; background: #fff; }
 .pdf-hint { font-size: .78rem; color: #718096; margin-top: 4px; }
+.firma-box { position: relative; border: 2px dashed var(--azul-m); border-radius: 12px; background: #fff; height: 190px; margin-top: 4px; }
+.firma-box canvas { width: 100%; height: 100%; display: block; touch-action: none; border-radius: 10px; }
+.firma-box .ph { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #a0aec0; font-size: .95rem; pointer-events: none; }
+.firma-acts { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; font-size: .78rem; color: #718096; }
+.firma-acts button { border: none; background: #e2e8f0; border-radius: 8px; padding: 8px 12px; font-weight: 600; color: #2d3748; }
 .btn-pdf2 { display: block; width: 100%; margin-top: 10px; padding: 14px; border: 2px solid var(--ok); border-radius: 12px; background: #fff; color: var(--ok); font-weight: 700; font-size: 1rem; min-height: 52px; }
 .btn-pdf { display: block; width: 100%; margin-top: 12px; padding: 16px; border: none; border-radius: 12px; background: var(--ok); color: #fff; font-weight: 700; font-size: 1.05rem; min-height: 56px; }
 #vista-previa{display:none}
@@ -166,6 +171,9 @@ textarea { min-height: 90px; resize: vertical; }
       <input type="text" id="signerName" placeholder="Nombre y apellidos" autocomplete="name">
       <label>Cargo / empresa (opcional)</label>
       <input type="text" id="signerRole" placeholder="Ej. encargado de obra">
+      <label>Firma (con el dedo)</label>
+      <div class="firma-box"><canvas id="firmaPad"></canvas><div class="ph" id="firmaPh">Firme aquí con el dedo</div></div>
+      <div class="firma-acts"><span>La firma quedará estampada en el albarán.</span><button type="button" onclick="borrarFirma()">Borrar firma</button></div>
       <label style="display:flex;align-items:flex-start;gap:10px;margin-top:14px;font-size:.9rem;font-weight:500;color:#2d3748">
         <input type="checkbox" id="accept" style="width:22px;height:22px;margin-top:2px;flex-shrink:0">
         <span>He revisado el material y confirmo la recepción según el estado indicado. Esta aceptación queda registrada como prueba de entrega.</span>
@@ -311,6 +319,7 @@ textarea { min-height: 90px; resize: vertical; }
       '<strong>' + esc(labels[selectedStatus] || selectedStatus) + '</strong>' +
       (document.getElementById('obs').value.trim() ? '<br><br>' + esc(document.getElementById('obs').value.trim()) : '');
     irPaso(3);
+    iniciarFirma();
     checkFirmar();
   };
 
@@ -328,8 +337,61 @@ textarea { min-height: 90px; resize: vertical; }
     }
   }
 
+  /* ---------- Firma con el dedo ---------- */
+  let pad = null, tinta = 0, caja = null;
+  function iniciarFirma() {
+    const cv = document.getElementById('firmaPad');
+    if (pad) return;
+    const r = cv.getBoundingClientRect(), dpr = Math.max(1, window.devicePixelRatio || 1);
+    cv.width = Math.round(r.width * dpr); cv.height = Math.round(r.height * dpr);
+    pad = cv.getContext('2d');
+    pad.scale(dpr, dpr);
+    pad.lineWidth = 2.6; pad.lineCap = 'round'; pad.lineJoin = 'round'; pad.strokeStyle = '#1a3a8a';
+    let dibujando = false, ult = null;
+    const punto = function (ev) { const b = cv.getBoundingClientRect(); return { x: ev.clientX - b.left, y: ev.clientY - b.top }; };
+    cv.addEventListener('pointerdown', function (ev) {
+      ev.preventDefault(); cv.setPointerCapture(ev.pointerId); dibujando = true; ult = punto(ev);
+      pad.beginPath(); pad.arc(ult.x, ult.y, 1.2, 0, Math.PI * 2); pad.fillStyle = pad.strokeStyle; pad.fill();
+      marcar(ult);
+    });
+    cv.addEventListener('pointermove', function (ev) {
+      if (!dibujando) return;
+      ev.preventDefault();
+      const p = punto(ev);
+      pad.beginPath(); pad.moveTo(ult.x, ult.y); pad.lineTo(p.x, p.y); pad.stroke();
+      tinta += Math.hypot(p.x - ult.x, p.y - ult.y); ult = p; marcar(p);
+    });
+    const fin = function () { dibujando = false; checkFirmar(); };
+    cv.addEventListener('pointerup', fin); cv.addEventListener('pointercancel', fin); cv.addEventListener('pointerleave', fin);
+  }
+  function marcar(p) {
+    document.getElementById('firmaPh').style.display = 'none';
+    if (!caja) caja = { x0: p.x, y0: p.y, x1: p.x, y1: p.y };
+    caja.x0 = Math.min(caja.x0, p.x); caja.y0 = Math.min(caja.y0, p.y);
+    caja.x1 = Math.max(caja.x1, p.x); caja.y1 = Math.max(caja.y1, p.y);
+  }
+  window.borrarFirma = function () {
+    const cv = document.getElementById('firmaPad');
+    if (pad) { pad.save(); pad.setTransform(1, 0, 0, 1, 0, 0); pad.clearRect(0, 0, cv.width, cv.height); pad.restore(); }
+    tinta = 0; caja = null;
+    document.getElementById('firmaPh').style.display = '';
+    checkFirmar();
+  };
+  /* PNG transparente recortado a lo firmado (para estamparlo grande en el albarán) */
+  function exportarFirma() {
+    const cv = document.getElementById('firmaPad');
+    const dpr = cv.width / cv.getBoundingClientRect().width;
+    const m = 6;
+    const x0 = Math.max(0, Math.floor((caja.x0 - m) * dpr)), y0 = Math.max(0, Math.floor((caja.y0 - m) * dpr));
+    const x1 = Math.min(cv.width, Math.ceil((caja.x1 + m) * dpr)), y1 = Math.min(cv.height, Math.ceil((caja.y1 + m) * dpr));
+    const out = document.createElement('canvas');
+    out.width = Math.max(1, x1 - x0); out.height = Math.max(1, y1 - y0);
+    out.getContext('2d').drawImage(cv, x0, y0, out.width, out.height, 0, 0, out.width, out.height);
+    return out.toDataURL('image/png');
+  }
+
   function checkFirmar() {
-    const ok = document.getElementById('signerName').value.trim().length >= 3 && document.getElementById('accept').checked;
+    const ok = document.getElementById('signerName').value.trim().length >= 3 && document.getElementById('accept').checked && tinta > 40;
     document.getElementById('btnFirmar').disabled = !ok;
   }
   document.getElementById('signerName').addEventListener('input', checkFirmar);
@@ -338,18 +400,38 @@ textarea { min-height: 90px; resize: vertical; }
   window.enviarConfirmacion = async function () {
     const name = document.getElementById('signerName').value.trim();
     if (name.length < 3 || !document.getElementById('accept').checked) return;
-    document.getElementById('btnFirmar').disabled = true;
+    if (tinta <= 40) { alert('Firme con el dedo en el recuadro.'); return; }
+    const btn = document.getElementById('btnFirmar');
+    btn.disabled = true; btn.textContent = 'Registrando firma…';
     try {
+      const firma = exportarFirma();
       const res = await api('publicSubmitConfirmation', {
         token: token,
         status: selectedStatus,
         signerName: name,
         signerRole: document.getElementById('signerRole').value.trim(),
         observations: document.getElementById('obs').value.trim(),
-        acceptanceText: 'He revisado el material y confirmo la recepción según el estado indicado.'
+        acceptanceText: 'He revisado el material y confirmo la recepción según el estado indicado.',
+        signaturePng: firma,
+        userAgent: navigator.userAgent
       });
+      /* Con albarán oficial: estampar la firma en él y subirlo (lo guarda y lo envía por correo) */
+      let firmadoB64 = '';
+      if (pdfOriginal && res.copia) {
+        btn.textContent = 'Firmando el albarán…';
+        try {
+          firmadoB64 = await estamparFirma(pdfOriginal, firma, res.copia);
+          await api('publicSignedPdf', { token: token, contentBase64: firmadoB64 });
+        } catch (err) {
+          firmadoB64 = '';
+          try { await api('publicSignedPdf', { token: token, fallo: true, motivo: String(err && err.message || err) }); } catch (e2) {}
+        }
+      }
       document.getElementById('app').classList.add('hidden');
-      if (res.copia) { mostrarCopia(res.copia, 'Confirmación registrada. Gracias.'); return; }
+      if (res.copia) {
+        if (firmadoB64) res.copia.signedPdfBase64 = firmadoB64;
+        mostrarCopia(res.copia, 'Confirmación registrada. Gracias.'); return;
+      }
       document.getElementById('done').innerHTML =
         '<h2>Confirmación registrada</h2>' +
         '<p>' + esc(res.message || 'Gracias.') + '</p>' +
@@ -357,9 +439,81 @@ textarea { min-height: 90px; resize: vertical; }
       document.getElementById('done').classList.remove('hidden');
     } catch (e) {
       alert(e.message);
-      document.getElementById('btnFirmar').disabled = false;
+      btn.disabled = false; btn.textContent = 'Confirmar y firmar';
     }
   };
+
+  /* =====================================================================
+     ESTAMPAR LA FIRMA EN EL ALBARÁN ORIGINAL (pdf-lib, en el propio móvil)
+     Última página, hueco debajo de «Observaciones»:
+       · izquierda: datos de la conformidad en letra pequeña
+       · derecha: la firma en grande, sobre una línea
+     Si no cupiera, se añade una página al final con lo mismo.
+     ===================================================================== */
+  async function cargarPdfLib() {
+    if (window.PDFLib) return;
+    try { await cargarScript('https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js'); }
+    catch (e) { await cargarScript('https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js'); }
+  }
+  function b64aBytes(b64) { const bin = atob(b64), u = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i); return u; }
+  function bytesAB64(u) { let s = ''; for (let i = 0; i < u.length; i += 0x8000) s += String.fromCharCode.apply(null, u.subarray(i, i + 0x8000)); return btoa(s); }
+  /* Altura (en puntos PDF, desde abajo) de «Observaciones» en la última página */
+  async function alturaObservaciones(b64) {
+    try {
+      await cargarPdfJs();
+      const pdf = await window.pdfjsLib.getDocument({ data: b64aBytes(b64) }).promise;
+      const page = await pdf.getPage(pdf.numPages);
+      const tc = await page.getTextContent();
+      const it = tc.items.find(function (x) { return /^\s*Observaciones/i.test(x.str || ''); });
+      return it ? it.transform[5] : null;
+    } catch (e) { return null; }
+  }
+  /* Solo caracteres que admite la fuente estándar del PDF */
+  function limpio(t) { return String(t == null ? '' : t).replace(/[^\x20-\x7E\xA0-\xFF€…«»·–—‘’“”]/g, '?'); }
+  async function estamparFirma(b64Original, firmaDataUrl, c) {
+    await cargarPdfLib();
+    const L = window.PDFLib;
+    const doc = await L.PDFDocument.load(b64aBytes(b64Original));
+    const font = await doc.embedFont(L.StandardFonts.Helvetica);
+    const bold = await doc.embedFont(L.StandardFonts.HelveticaBold);
+    const png = await doc.embedPng(firmaDataUrl);
+    let page = doc.getPages()[doc.getPageCount() - 1];
+    const W = page.getWidth(), H = page.getHeight();
+    const obsY = await alturaObservaciones(b64Original);
+    let top = (obsY != null ? obsY : 117) - 7, bottom = 16;
+    if (top - bottom < 72) {                                  /* no cabe: página nueva */
+      page = doc.addPage([W, H]); top = H - 50; bottom = H - 160;
+    }
+    const gris = L.rgb(0.25, 0.25, 0.25);
+    /* firma, a la derecha y en grande */
+    const bx = W * 0.53, bw = W - 40 - bx, bh = Math.min(top - bottom - 16, 80);
+    const sc = Math.min(bw / png.width, bh / png.height);
+    const sw = png.width * sc, sh = png.height * sc;
+    page.drawImage(png, { x: bx + (bw - sw) / 2, y: bottom + 13 + (bh - sh) / 2, width: sw, height: sh });
+    page.drawLine({ start: { x: bx, y: bottom + 11 }, end: { x: bx + bw, y: bottom + 11 }, thickness: 0.6, color: gris });
+    page.drawText(limpio('Firma del receptor: ' + (c.signerName || '')), { x: bx, y: bottom + 3, size: 6.5, font: font, color: gris });
+    /* datos, a la izquierda */
+    const x = 40, maxW = bx - x - 14;
+    let y = top - 7;
+    const linea = function (t, f, size) {
+      if (y < bottom) return;
+      t = limpio(t);
+      while (t.length > 4 && f.widthOfTextAtSize(t, size) > maxW) t = t.slice(0, -2);
+      page.drawText(t, { x: x, y: y, size: size, font: f, color: L.rgb(0, 0, 0) });
+      y -= size + 2.4;
+    };
+    const ESTADOS = { recibido_conforme: 'Recibido conforme', recibido_con_reservas: 'Recibido con reservas',
+      entrega_parcial: 'Entrega parcial', no_recibido_rechazado: 'No recibido / rechazado' };
+    linea('CONFORMIDAD DE RECEPCIÓN · REGISTRO ELECTRÓNICO', bold, 7);
+    linea('Estado: ' + (ESTADOS[c.status] || c.status || ''), bold, 6.5);
+    linea('Firmado por: ' + (c.signerName || '') + (c.signerRole ? ' · ' + c.signerRole : ''), font, 6.5);
+    linea('Fecha y hora: ' + fechaES(c.signedAt).slice(0, 16), font, 6.5);
+    if (c.observations) linea('Observaciones: ' + c.observations, font, 6.5);
+    linea('Enlace personal enviado al ' + (c.contactoTelefono || '') + ' · Ref. ' + (c.versionId || '') + ' ' + (c.signedWithToken || ''), font, 6);
+    if (c.pdfSha256) { linea('Huella SHA-256 del albarán original:', font, 6); linea(c.pdfSha256, font, 5.6); }
+    linea('No es firma electrónica cualificada.', font, 5.6);
+    return bytesAB64(await doc.save());
+  }
 
 
   /* ---------- Copia del albarán firmado para el receptor ---------- */
@@ -440,12 +594,14 @@ textarea { min-height: 90px; resize: vertical; }
   function cargarScript(src) {
     return new Promise(function (ok, ko) { const s = document.createElement('script'); s.src = src; s.onload = ok; s.onerror = ko; document.head.appendChild(s); });
   }
+  async function cargarPdfJs() {
+    if (window.pdfjsLib) return;
+    await cargarScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+  }
   async function pintarPdf(b64, el) {
     try {
-      if (!window.pdfjsLib) {
-        await cargarScript('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js');
-        window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-      }
+      await cargarPdfJs();
       const bin = atob(b64), bytes = new Uint8Array(bin.length);
       for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
       const pdf = await window.pdfjsLib.getDocument({ data: bytes }).promise;
@@ -482,12 +638,16 @@ textarea { min-height: 90px; resize: vertical; }
         'Fecha: ' + esc(fechaES(c.signedAt)) +
         (c.observations ? '<br>Observaciones: ' + esc(c.observations) : '') +
       '</div>' +
-      (pdfOriginal ? '<button class="btn-pdf2" onclick="descargarOriginal()">Descargar albarán original (PDF)</button>' : '') +
-      '<button class="btn-pdf" onclick="descargarCopia(this)">' + (pdfOriginal ? 'Descargar hoja de conformidad (PDF)' : 'Descargar albarán firmado (PDF)') + '</button>' +
-      '<p style="font-size:.82rem;margin-top:10px">' + (pdfOriginal ? 'La hoja de conformidad recoge quién firmó, cuándo y el estado de la entrega; acompaña al albarán original. ' : '') +
-      'Este enlace es su copia: puede volver a abrirlo cuando quiera.</p>';
+      (c.signedPdfBase64
+        ? '<button class="btn-pdf" onclick="descargarFirmado()">Descargar albarán firmado (PDF)</button>'
+        : '<button class="btn-pdf" onclick="descargarCopia(this)">Descargar albarán firmado (PDF)</button>') +
+      '<p style="font-size:.82rem;margin-top:10px">Este enlace es su copia: puede volver a abrirlo cuando quiera.</p>';
     d.classList.remove('hidden');
   }
+  window.descargarFirmado = function () {
+    if (!copiaActual || !copiaActual.signedPdfBase64) return;
+    descargarB64(copiaActual.signedPdfBase64, 'Albaran ' + String(copiaActual.ref || '').replace(/\//g, '-') + ' firmado.pdf');
+  };
   /* Descarga un PDF a partir de base64 (funciona en móvil, sin «imprimir») */
   function descargarB64(b64, nombre) {
     const bin = atob(b64), bytes = new Uint8Array(bin.length);

@@ -223,6 +223,8 @@ body { font-family: system-ui, -apple-system, sans-serif; background: var(--fond
       <input type="text" id="mgContacto" placeholder="Nombre del encargado">
       <label>Teléfono (al que va el WhatsApp)</label>
       <input type="tel" id="mgTel" inputmode="tel" placeholder="Teléfono móvil">
+      <label>Correo del cliente para la copia firmada (opcional)</label>
+      <input type="email" id="mgEmail" placeholder="administracion@cliente.com · si lo dejas vacío, solo os llega a vosotros">
       <label>Dirección de entrega (opcional)</label>
       <input type="text" id="mgDir" placeholder="Dirección de la obra">
       <label>Fecha prevista (opcional)</label>
@@ -353,7 +355,7 @@ body { font-family: system-ui, -apple-system, sans-serif; background: var(--fond
           (!v.isSigned && v.status !== 'papel_incorporado' ? '<button class="btn btn-sm btn-primary" onclick="prepararSms(\'' + v.id + '\')">Preparar mensaje</button>' : '') +
           (!v.isSigned ? '<button class="btn btn-sm btn-warn" onclick="marcarPapel(\'' + v.id + '\')">Gestión en papel</button>' : '') +
           (s.pdfFileId ? '<button class="btn btn-sm btn-ghost" onclick="verPdfOficial(\'' + s.pdfFileId + '\')">PDF oficial</button>' : '') +
-          (v.isSigned || v.confirmationType === 'paper' ? '<button class="btn btn-sm btn-ok" onclick="imprimirFirmado(\'' + v.id + '\')">' + (s.pdfFileId ? 'Hoja de conformidad (PDF)' : 'Albarán firmado (PDF)') + '</button>' : '') +
+          (v.isSigned || v.confirmationType === 'paper' ? '<button class="btn btn-sm btn-ok" onclick="imprimirFirmado(\'' + v.id + '\')">' + (v.signedPdf && v.signedPdf.fileId ? 'Albarán firmado (PDF)' : 'Hoja de conformidad (PDF)') + '</button>' : '') +
           '<button class="btn btn-sm btn-ghost" onclick="verEventos(\'' + v.prealbaranId + '\',\'' + v.id + '\')">Historial</button>' +
         '</div></div>';
     }).join('');
@@ -407,6 +409,7 @@ body { font-family: system-ui, -apple-system, sans-serif; background: var(--fond
     document.getElementById('mgContacto').value = (pre && pre.contactoNombre) || (w && w.foremanName) || (cli && cli.contactName) || '';
     document.getElementById('mgTel').value = (pre && pre.contactoTelefono) || (w && w.foremanPhone) || (cli && cli.phone) || '';
     document.getElementById('mgDir').value = (pre && pre.direccionEntrega) || (w && w.address) || '';
+    document.getElementById('mgEmail').value = (pre && pre.emailCliente) || (cli && cli.email) || '';
     document.getElementById('mgFecha').value = (pre && pre.fechaPrevista) || '';
     document.getElementById('mgBtn').disabled = false;
     document.getElementById('mgPdf').value = '';
@@ -441,6 +444,8 @@ body { font-family: system-ui, -apple-system, sans-serif; background: var(--fond
     if (!tel) { toast('Pon el teléfono al que va el mensaje'); return; }
     const f = document.getElementById('mgPdf').files[0];
     if (f && f.size > 10 * 1024 * 1024) { toast('El PDF pesa más de 10 MB'); return; }
+    const em = document.getElementById('mgEmail').value.trim();
+    if (em && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(em)) { toast('Revisa el correo del cliente'); return; }
     if (f && /DECA/i.test(f.name) && !confirm('El archivo parece un DECA, no el albarán. ¿Subirlo igualmente?')) return;
     const btn = document.getElementById('mgBtn');
     btn.disabled = true;
@@ -455,6 +460,7 @@ body { font-family: system-ui, -apple-system, sans-serif; background: var(--fond
         contactoTelefono: tel,
         direccionEntrega: document.getElementById('mgDir').value.trim(),
         fechaPrevista: document.getElementById('mgFecha').value,
+        emailCliente: document.getElementById('mgEmail').value.trim(),
         actor: 'usuario'
       });
       cerrarModal('modalMg');
@@ -666,8 +672,11 @@ body { font-family: system-ui, -apple-system, sans-serif; background: var(--fond
   /* Hoja de conformidad: la misma que descarga el cliente (PDF generado en el servidor) */
   window.imprimirFirmado = async function (versionId) {
     const w = window.open('', '_blank');
+    const ver = cache.deliveryVersions.find(function (x) { return x.id === versionId; }) || {};
     try {
-      const r = await api('getConformidadPdf', { versionId: versionId });
+      const r = (ver.signedPdf && ver.signedPdf.fileId)
+        ? await api('getAlbaranPdf', { fileId: ver.signedPdf.fileId })
+        : await api('getConformidadPdf', { versionId: versionId });
       const bin = atob(r.base64), bytes = new Uint8Array(bin.length);
       for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
       const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
